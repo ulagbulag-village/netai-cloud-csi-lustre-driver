@@ -7,25 +7,23 @@
 set -eu
 
 # Configure environment variables
-export KV_OUT_DIR="/lib/modules/${KERNEL_VERSION}/build/"
-# export CONFIG_MODULES=y
-
-# Install dependencies
-emerge-gitclone &&
-    emerge --verbose \
-        openmpi
+export KERNEL_DIR="/lib/modules/${KERNEL_VERSION}/build/"
+export KV_OUT_DIR="$KERNEL_DIR"
 
 # Get Gentoo repository
 cat >/etc/portage/repos.conf/gentoo.conf <<'EOF'
+[DEFAULT]
+main-repo = gentoo
+
 [gentoo]
 disabled = false
-location = /var/lib/portage/portage-gentoo
+location = /var/lib/portage/gentoo
 sync-type = git
 sync-uri = https://github.com/gentoo/gentoo.git
 EOF
 
-mkdir -p /var/lib/portage/portage-gentoo/metadata/
-cat >/var/lib/portage/portage-gentoo/metadata/layout.conf <<'EOF'
+mkdir -p /var/lib/portage/gentoo/metadata/
+cat >/var/lib/portage/gentoo/metadata/layout.conf <<'EOF'
 repo-name = gentoo
 masters = portage-stable
 use-manifests = strict
@@ -33,27 +31,28 @@ thin-manifests = true
 cache-format = md5-dict
 EOF
 
+# Load packages info
+rm -rf /var/lib/portage/gentoo
+emerge-gitclone
 emerge --sync gentoo
 
-# Get packages from Gentoo repository
-PKG_GENTOO=(
-    "sys-fs/udev-init-scripts"
-    "sys-fs/zfs"
-    "sys-fs/zfs-kmod"
-    "eclass/dist-kernel-utils.eclass"
-    "virtual/dist-kernel"
-)
-
-for pkg in ${PKG_GENTOO[@]}; do
-    ln -sf "/var/lib/portage/portage-gentoo/$pkg" "/var/lib/portage/portage-stable/$pkg"
-done
-
-# Disable Gentoo repository
-rm -rf /etc/portage/repos.conf/gentoo.conf
-
-# Install ZFS
-emerge --verbose zfs
+# Install dependencies
+emerge --verbose \
+    "bc::portage-stable" \
+    "coreos-sources::coreos" \
+    "elt-patches::portage-stable" \
+    "flex::portage-stable" \
+    "linux-sources::coreos" \
+    "mt-st::gentoo" \
+    "openmpi::gentoo" \
+    "perl::portage-stable" \
+    "swig::gentoo" \
+    "zfs::gentoo"
 
 # Compile the Lustre driver kernel modules into the development environment
 pushd ./lustre-release
+sh autogen.sh
+./configure --enable-client --enable-server
+make
+# make pkg-kmod
 popd
