@@ -6,10 +6,6 @@
 # Prehibit errors
 set -eu
 
-# Configure environment variables
-export KERNEL_DIR="/lib/modules/${KERNEL_VERSION}/build/"
-export KV_OUT_DIR="$KERNEL_DIR"
-
 # Get Gentoo repository
 cat >/etc/portage/repos.conf/gentoo.conf <<'EOF'
 [DEFAULT]
@@ -22,10 +18,10 @@ sync-type = git
 sync-uri = https://github.com/gentoo/gentoo.git
 EOF
 
-mkdir -p /var/lib/portage/gentoo/metadata/
-cat >/var/lib/portage/gentoo/metadata/layout.conf <<'EOF'
-repo-name = gentoo
-masters = portage-stable
+mkdir -p /var/lib/portage/scripts/sdk_container/src/third_party/portage-stable/metadata/
+cat >/var/lib/portage/scripts/sdk_container/src/third_party/portage-stable/metadata/layout.conf <<'EOF'
+repo-name = portage-stable
+masters = gentoo
 use-manifests = strict
 thin-manifests = true
 cache-format = md5-dict
@@ -36,23 +32,38 @@ rm -rf /var/lib/portage/gentoo
 emerge-gitclone
 emerge --sync gentoo
 
+# Unmask lustre package as missing keyword
+mkdir -p /etc/portage/package.accept_keywords/
+cat >/etc/portage/package.accept_keywords/liblo <<'EOF'
+sys-cluster/lustre **
+EOF
+
 # Install dependencies
 emerge --verbose \
     "bc::portage-stable" \
     "coreos-sources::coreos" \
+    "dev-libs/libyaml::portage-stable" \
     "elt-patches::portage-stable" \
     "flex::portage-stable" \
     "linux-sources::coreos" \
     "mt-st::gentoo" \
     "openmpi::gentoo" \
     "perl::portage-stable" \
-    "swig::gentoo" \
-    "zfs::gentoo"
+    "rpm::gentoo" \
+    "swig::gentoo"
 
-# Compile the Lustre driver kernel modules into the development environment
-pushd ./lustre-release
-sh autogen.sh
-./configure --enable-client --enable-server
-make
-# make pkg-kmod
+# Configure environment variables
+export KV_DIR="/usr/src/linux"
+export KV_OUT_DIR="/lib/modules/${KERNEL_VERSION}/build/"
+
+# Use full linux kernel sources
+mv "/lib/modules/${KERNEL_VERSION}/source/" "/lib/modules/${KERNEL_VERSION}/source-bak/"
+ln -sf "/usr/src/linux" "/lib/modules/${KERNEL_VERSION}/source"
+
+# Fix package version
+pushd /var/lib/portage/portage-stable
+mv ./sys-cluster/lustre/lustre-9999.ebuild ./sys-cluster/lustre/lustre-2.15.0.ebuild
 popd
+
+# Install packages
+emerge --verbose "lustre::portage-stable"

@@ -101,7 +101,7 @@ _build_driver_kernel_module() {
     echo "Building the Flatcar kernel sources into the development environment..."
 
     cat <<'EOF' | chroot /mnt/flatcar /bin/bash
-        export KERNEL_VERSION=$(ls /lib/modules)
+        export KERNEL_VERSION=$(uname -r)
         export KERNEL_STRING=$(echo "${KERNEL_VERSION}" | cut -d "-" -f1)
 
         echo "Inspecting the Flatcar kernel sources for kernel version ${KERNEL_VERSION}..."

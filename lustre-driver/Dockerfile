@@ -4,7 +4,7 @@
 
 # Configure environment variables
 ARG DRIVER_NAME="Lustre"
-ARG DRIVER_VERSION="2.15.0"
+ARG DRIVER_VERSION="2.15.52"
 ARG ROCKYLINUX_VERSION="8"
 
 # Be ready for building
@@ -24,28 +24,14 @@ VOLUME /opt/driver/
 RUN dnf install --assumeyes epel-release rocky-release \
     # Install packages
     && dnf install --assumeyes --enablerepo=powertools \
-    git kmod lbzip2 \
-    # Cleanup
-    && dnf clean all \
-    && rm -rf /var/cache /var/log/dnf* /var/log/yum.*
-
-# Load the lustre source code
-WORKDIR /usr/src/driver/
-RUN git clone git://git.whamcloud.com/fs/lustre-release.git \
-    && cd /usr/src/driver/lustre-release/ \
-    && git checkout ${DRIVER_VERSION}
-# && sh autogen.sh \
-# && ./configure --enable-client --enable-server
-
-# Remove unneeded dependencies
-RUN dnf remove --assumeyes git \
+    kmod lbzip2 \
     # Cleanup
     && dnf clean all \
     && rm -rf /var/cache /var/log/dnf* /var/log/yum.*
 
 # Builder Configuration
 WORKDIR /usr/src/driver/
-CMD ["/opt/driver/flatcar-driver-helper.sh"]
+CMD ["/usr/src/driver/flatcar-driver-helper.sh"]
 
 # Load files
-ADD ./*.sh /opt/driver/
+ADD ./*.sh /usr/src/driver/
