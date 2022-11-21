@@ -73,8 +73,6 @@ src_prepare() {
 		ACLOCAL_FLAGS="$ACLOCAL_FLAGS -I $dir/autoconf"
 	done
 
-	export FEATURES="-sandbox -usersandbox"
-
 	_elibtoolize -q
 	eaclocal -I config $ACLOCAL_FLAGS
 	eautoheader
@@ -89,8 +87,10 @@ src_configure() {
 
 	# Set CROSS_COMPILE in the environment.
 	# This allows the user to override it via make.conf or via a local Makefile.
-	# https://bugs.gentoo.org/811600
 	export CROSS_COMPILE=${CROSS_COMPILE-${CHOST}-}
+
+	# Set default binary directory
+	EPREFIX="${LUSTRE_DIR:-$EPREFIX}"
 
 	local myconf
 	if use server; then

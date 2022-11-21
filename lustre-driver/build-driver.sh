@@ -53,8 +53,10 @@ emerge --verbose \
     "swig::gentoo"
 
 # Configure environment variables
+export FEATURES="-sandbox -usersandbox"
 export KV_DIR="/usr/src/linux"
 export KV_OUT_DIR="/lib/modules/${KERNEL_VERSION}/build/"
+export LUSTRE_DIR="/opt/driver"
 
 # Use full linux kernel sources
 mv "/lib/modules/${KERNEL_VERSION}/source/" "/lib/modules/${KERNEL_VERSION}/source-bak/"
@@ -62,8 +64,22 @@ ln -sf "/usr/src/linux" "/lib/modules/${KERNEL_VERSION}/source"
 
 # Fix package version
 pushd /var/lib/portage/portage-stable
-mv ./sys-cluster/lustre/lustre-9999.ebuild ./sys-cluster/lustre/lustre-2.15.0.ebuild
+mv "./sys-cluster/lustre/lustre-9999.ebuild" "./sys-cluster/lustre/lustre-${DRIVER_VERSION}.ebuild"
 popd
 
 # Install packages
 emerge --verbose "lustre::portage-stable"
+
+# Copy linked shared libraries
+mkdir -p "$LUSTRE_DIR/lib"
+for lib in $(
+    file ${LUSTRE_DIR}/*bin/* |
+        awk -F: '$2 ~ "dynamically linked" {print $1}' |
+        xargs lddtree |
+        grep -Po '=> \K(/lib[0-9a-zA-Z_/\.\-]*)'
+); do
+    lib_dst="$LUSTRE_DIR/lib/$(dirname $lib)"
+    if [ ! -f "$lib_dst" ]; then
+        cp "/usr/$lib" "$lib_dst"
+    fi
+done

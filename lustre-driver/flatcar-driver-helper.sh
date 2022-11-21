@@ -15,8 +15,8 @@ RUN_DIR=/run/driver
 PID_FILE=${RUN_DIR}/${0##*/}.pid
 DRIVER_NAME=${DRIVER_NAME:?"Missing driver name"}
 DRIVER_VERSION=${DRIVER_VERSION:?"Missing driver version"}
-DRIVER_BINUTILS_DIR=/opt/driver/binutils
-DRIVER_KMODS_DIR=/opt/driver/${DRIVER_VERSION}
+DRIVER_MODULE=${DRIVER_VERSION:?"Missing driver module name"}
+DRIVER_MODULE_DEP=${DRIVER_MODULE_DEP:-""}
 DRIVER_SOURCE_DIR=/usr/src/driver/
 
 # The developement environment is required to access gcc and binutils
@@ -57,6 +57,7 @@ _install_development_env() {
     # Append the source code directory information
     echo "DRIVER_NAME=$DRIVER_NAME" >/usr/src/driver.txt
     echo "DRIVER_SOURCE_DIR=$DRIVER_SOURCE_DIR" >>/usr/src/driver.txt
+    echo "DRIVER_VERSION=$DRIVER_VERSION" >>/usr/src/driver.txt
 
     # Copy the build script into source code
     cp "./build-driver.sh" "$DRIVER_SOURCE_DIR"
@@ -70,17 +71,6 @@ _install_development_env() {
     _exec mount --make-rslave /mnt/flatcar/sys
     mkdir -p /mnt/flatcar/usr/src
     _exec mount --rbind /usr/src /mnt/flatcar/usr/src
-
-    # Archive the binutils since we need the linker for re-linking the modules
-    if [ ! -e ${DRIVER_BINUTILS_DIR} ]; then
-        mkdir -p ${DRIVER_BINUTILS_DIR}/libs
-        mkdir -p ${DRIVER_BINUTILS_DIR}/bin
-    fi
-    local binutils_ver=$(ls -d /mnt/flatcar/usr/lib64/binutils/$(arch)-cros-linux-gnu/*)
-    binutils_ver=${binutils_ver##*/}
-    cp -r /mnt/flatcar/usr/$(arch)-cros-linux-gnu/binutils-bin/${binutils_ver}/* ${DRIVER_BINUTILS_DIR}/bin/
-    cp -r /mnt/flatcar/usr/lib64/binutils/$(arch)-cros-linux-gnu/${binutils_ver}/* ${DRIVER_BINUTILS_DIR}/libs/
-    cp -a /mnt/flatcar/usr/lib64/*.so* ${DRIVER_BINUTILS_DIR}/libs/
 }
 
 _cleanup_development_env() {
@@ -115,9 +105,16 @@ _build_driver_kernel_module() {
         $0 "${DRIVER_SOURCE_DIR}/build-driver.sh"
 EOF
 
+    # Copy kernel modules
     mkdir -p /lib/modules/${KERNEL_VERSION}
     cp -r /mnt/flatcar/lib/modules/${KERNEL_VERSION}/* /lib/modules/${KERNEL_VERSION}/
     depmod "${KERNEL_VERSION}"
+
+    # Copy binareis
+    if [ -d "/mnt/flatcar/opt/driver" ]; then
+        mkdir -p /opt/driver
+        cp -r /mnt/flatcar/opt/driver/* /opt/driver/*
+    fi
 
     _cleanup_development_env
 }
@@ -125,13 +122,18 @@ EOF
 # Compile the kernel modules, optionally sign them, and generate a precompiled package for use later.
 _create_driver_package() (
     _build_driver_kernel_module
-    $0 "./create-driver.sh"
+
+    if [ -f "./create-driver.sh" ]; then
+        $0 "./create-driver.sh"
+    fi
 )
 
 # Update if the kernel version requires a new precompiled driver packages.
 _update_driver_package() {
-    if $0 "./check-driver.sh"; then
-        _create_driver_package
+    if [ -f "./check-driver.sh" ]; then
+        if ! $0 "./check-driver.sh"; then
+            _create_driver_package
+        fi
     fi
 }
 
@@ -139,71 +141,41 @@ _update_driver_package() {
 _install_driver() {
     _update_driver_package
 
-    $0 "./install-driver.sh"
+    if [ -f "./install-driver.sh" ]; then
+        $0 "./install-driver.sh"
+    fi
     _load_driver
 }
 
 # Load the kernel modules and start persistence daemon.
 _load_driver() {
     echo "Loading ${DRIVER_NAME} driver kernel modules..."
-    modprobe -d ${DRIVER_KMODS_DIR} -a nvidia nvidia-uvm nvidia-modeset
+    for module in $DRIVER_MODULE_DEP; do
+        modprobe -av "$module"
+    done
+    modprobe -av "$DRIVER_MODULE"
 
-    echo "Starting ${DRIVER_NAME} persistence daemon..."
-    nvidia-persistenced --persistence-mode
+    if [ -f "./load-driver.sh" ]; then
+        $0 "./load-driver.sh"
+    fi
 
     _mount_rootfs
 }
 
 # Stop persistence daemon and unload the kernel modules if they are currently loaded.
 _unload_driver() {
-    local rmmod_args=()
-    local nvidia_deps=0
-    local nvidia_refs=0
-    local nvidia_uvm_refs=0
-    local nvidia_modeset_refs=0
+    _unmount_rootfs || return 1
 
-    echo "Stopping ${DRIVER_NAME} persistence daemon..."
-    if [ -f /var/run/nvidia-persistenced/nvidia-persistenced.pid ]; then
-        local pid
-        pid=$(</var/run/nvidia-persistenced/nvidia-persistenced.pid)
-
-        kill -SIGTERM "${pid}"
-        for i in $(seq 1 10); do
-            kill -0 "${pid}" 2>/dev/null || break
-            sleep 0.1
-        done
-        if [ "$i" -eq 10 ]; then
-            echo "Could not stop ${DRIVER_NAME} persistence daemon" >&2
-            return 1
-        fi
+    if [ -f "./unload-driver.sh" ]; then
+        $0 "./unload-driver.sh" || return 1
     fi
 
     echo "Unloading ${DRIVER_NAME} driver kernel modules..."
-    if [ -f /sys/module/nvidia_modeset/refcnt ]; then
-        nvidia_modeset_refs=$(</sys/module/nvidia_modeset/refcnt)
-        rmmod_args+=("nvidia-modeset")
-        ((++nvidia_deps))
-    fi
-    if [ -f /sys/module/nvidia_uvm/refcnt ]; then
-        nvidia_uvm_refs=$(</sys/module/nvidia_uvm/refcnt)
-        rmmod_args+=("nvidia-uvm")
-        ((++nvidia_deps))
-    fi
-    if [ -f /sys/module/nvidia/refcnt ]; then
-        nvidia_refs=$(</sys/module/nvidia/refcnt)
-        rmmod_args+=("nvidia")
-    fi
-    if [ "${nvidia_refs}" -gt "${nvidia_deps}" ] || [ "${nvidia_uvm_refs}" -gt 0 ] ||
-        [ "${nvidia_modeset_refs}" -gt 0 ]; then
-        echo "Could not unload ${DRIVER_NAME} driver kernel modules, driver is in use" >&2
-        return 1
-    fi
+    modprobe -rv "$DRIVER_MODULE" || return 1
+    for module in $(echo $DRIVER_MODULE_DEP | rev); do
+        modprobe -rv "$(echo $module | rev)" || true
+    done
 
-    if [ ${#rmmod_args[@]} -gt 0 ]; then
-        rmmod "${rmmod_args[@]}"
-    fi
-
-    _unmount_rootfs || return 1
     return 0
 }
 
@@ -223,7 +195,7 @@ _exec() {
 
 # Mount the driver rootfs into the run directory with the exception of sysfs.
 _mount_rootfs() {
-    echo "Mounting driver rootfs..."
+    echo "Mounting ${DRIVER_NAME} driver rootfs..."
     _exec mount --make-runbindable /sys
     _exec mount --make-private /sys
     mkdir -p ${RUN_DIR}/driver
@@ -232,7 +204,7 @@ _mount_rootfs() {
 
 # Unmount the driver rootfs from the run directory.
 _unmount_rootfs() {
-    echo "Unmounting driver rootfs..."
+    echo "Unmounting ${DRIVER_NAME} driver rootfs..."
     if findmnt -r -o TARGET | grep "${RUN_DIR}/driver" >/dev/null; then
         _exec umount -l -R ${RUN_DIR}/driver
     fi
@@ -359,6 +331,3 @@ main() {
 }
 
 main
-
-# Build it!
-# make
