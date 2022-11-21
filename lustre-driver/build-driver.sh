@@ -32,9 +32,17 @@ rm -rf /var/lib/portage/gentoo
 emerge-gitclone
 emerge --sync gentoo
 
-# Unmask lustre package as missing keyword
+# Add the driver packages
+cp -r ./packages/* /var/lib/portage/portage-stable/
+
+# Fix package version
+pushd /var/lib/portage/portage-stable/
+mv "./sys-cluster/lustre/lustre-9999.ebuild" "./sys-cluster/lustre/lustre-${DRIVER_VERSION}.ebuild"
+popd
+
+# Unmask driver package as missing keyword
 mkdir -p /etc/portage/package.accept_keywords/
-cat >/etc/portage/package.accept_keywords/liblo <<'EOF'
+cat >/etc/portage/package.accept_keywords/lustre <<'EOF'
 sys-cluster/lustre **
 EOF
 
@@ -49,36 +57,26 @@ emerge --verbose \
     "mt-st::gentoo" \
     "openmpi::gentoo" \
     "perl::portage-stable" \
-    "rpm::gentoo" \
     "swig::gentoo"
 
 # Configure environment variables
 export FEATURES="-sandbox -usersandbox"
 export KV_DIR="/usr/src/linux"
 export KV_OUT_DIR="/lib/modules/${KERNEL_VERSION}/build/"
-export LUSTRE_DIR="/opt/driver"
-
-# Use full linux kernel sources
-mv "/lib/modules/${KERNEL_VERSION}/source/" "/lib/modules/${KERNEL_VERSION}/source-bak/"
-ln -sf "/usr/src/linux" "/lib/modules/${KERNEL_VERSION}/source"
-
-# Fix package version
-pushd /var/lib/portage/portage-stable
-mv "./sys-cluster/lustre/lustre-9999.ebuild" "./sys-cluster/lustre/lustre-${DRIVER_VERSION}.ebuild"
-popd
+export BINUTILS_DIR="/opt/driver"
 
 # Install packages
 emerge --verbose "lustre::portage-stable"
 
 # Copy linked shared libraries
-mkdir -p "$LUSTRE_DIR/lib"
+mkdir -p "$BINUTILS_DIR/lib"
 for lib in $(
-    file ${LUSTRE_DIR}/*bin/* |
+    file ${BINUTILS_DIR}/*bin/* |
         awk -F: '$2 ~ "dynamically linked" {print $1}' |
         xargs lddtree |
         grep -Po '=> \K(/lib[0-9a-zA-Z_/\.\-]*)'
 ); do
-    lib_dst="$LUSTRE_DIR/lib/$(dirname $lib)"
+    lib_dst="$BINUTILS_DIR/lib/$(dirname $lib)"
     if [ ! -f "$lib_dst" ]; then
         cp "/usr/$lib" "$lib_dst"
     fi

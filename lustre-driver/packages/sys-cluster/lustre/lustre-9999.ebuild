@@ -90,7 +90,7 @@ src_configure() {
 	export CROSS_COMPILE=${CROSS_COMPILE-${CHOST}-}
 
 	# Set default binary directory
-	EPREFIX="${LUSTRE_DIR:-$EPREFIX}"
+	BINUTILS_DIR="${BINUTILS_DIR:-$EPREFIX}"
 
 	local myconf
 	if use server; then
@@ -107,8 +107,8 @@ src_configure() {
 	econf \
 		HOSTCC="$(tc-getBUILD_CC)" \
 		${myconf} \
-		--bindir="${EPREFIX}/bin" \
-		--sbindir="${EPREFIX}/sbin" \
+		--bindir="${BINUTILS_DIR}/bin" \
+		--sbindir="${BINUTILS_DIR}/sbin" \
 		--without-ldiskfs \
 		--with-config=kernel \
 		--with-linux="${KV_DIR}" \

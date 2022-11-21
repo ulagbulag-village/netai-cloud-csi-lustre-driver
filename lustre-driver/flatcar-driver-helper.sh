@@ -15,7 +15,7 @@ RUN_DIR=/run/driver
 PID_FILE=${RUN_DIR}/${0##*/}.pid
 DRIVER_NAME=${DRIVER_NAME:?"Missing driver name"}
 DRIVER_VERSION=${DRIVER_VERSION:?"Missing driver version"}
-DRIVER_MODULE=${DRIVER_VERSION:?"Missing driver module name"}
+DRIVER_MODULE=${DRIVER_MODULE:?"Missing driver module name"}
 DRIVER_MODULE_DEP=${DRIVER_MODULE_DEP:-""}
 DRIVER_SOURCE_DIR=/usr/src/driver/
 
@@ -113,7 +113,7 @@ EOF
     # Copy binareis
     if [ -d "/mnt/flatcar/opt/driver" ]; then
         mkdir -p /opt/driver
-        cp -r /mnt/flatcar/opt/driver/* /opt/driver/*
+        cp -r /mnt/flatcar/opt/driver/* /opt/driver/
     fi
 
     _cleanup_development_env
@@ -198,15 +198,15 @@ _mount_rootfs() {
     echo "Mounting ${DRIVER_NAME} driver rootfs..."
     _exec mount --make-runbindable /sys
     _exec mount --make-private /sys
-    mkdir -p ${RUN_DIR}/driver
-    _exec mount --rbind / ${RUN_DIR}/driver
+    mkdir -p "${RUN_DIR}"
+    _exec mount --rbind / "${RUN_DIR}"
 }
 
 # Unmount the driver rootfs from the run directory.
 _unmount_rootfs() {
     echo "Unmounting ${DRIVER_NAME} driver rootfs..."
-    if findmnt -r -o TARGET | grep "${RUN_DIR}/driver" >/dev/null; then
-        _exec umount -l -R ${RUN_DIR}/driver
+    if findmnt -r -o TARGET | grep "${RUN_DIR}" >/dev/null; then
+        _exec umount -l -R "${RUN_DIR}"
     fi
 }
 
