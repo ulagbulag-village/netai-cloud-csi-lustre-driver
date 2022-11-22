@@ -89,9 +89,6 @@ src_configure() {
 	# This allows the user to override it via make.conf or via a local Makefile.
 	export CROSS_COMPILE=${CROSS_COMPILE-${CHOST}-}
 
-	# Set default binary directory
-	BINUTILS_DIR="${BINUTILS_DIR:-$EPREFIX}"
-
 	local myconf
 	if use server; then
 		SPL_PATH=$(basename $(echo "${EROOT}/usr/src/spl-"*))
@@ -107,8 +104,8 @@ src_configure() {
 	econf \
 		HOSTCC="$(tc-getBUILD_CC)" \
 		${myconf} \
-		--bindir="${BINUTILS_DIR}/bin" \
-		--sbindir="${BINUTILS_DIR}/sbin" \
+		--bindir="${EPREFIX}/bin" \
+		--sbindir="${EPREFIX}/sbin" \
 		--without-ldiskfs \
 		--with-config=kernel \
 		--with-linux="${KV_DIR}" \

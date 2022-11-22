@@ -40,6 +40,12 @@ pushd /var/lib/portage/portage-stable/
 mv "./sys-cluster/lustre/lustre-9999.ebuild" "./sys-cluster/lustre/lustre-${DRIVER_VERSION}.ebuild"
 popd
 
+# Specify the output binary directory
+pushd /var/lib/portage/
+sed -i 's/EPREFIX/BINUTILS_DIR/g' */sys-cluster/lustre/*.ebuild
+# sed -i 's/EPREFIX/BINUTILS_DIR/g' */sys-fs/zfs/*.ebuild
+popd
+
 # Unmask driver package as missing keyword
 mkdir -p /etc/portage/package.accept_keywords/
 cat >/etc/portage/package.accept_keywords/lustre <<'EOF'
@@ -60,10 +66,12 @@ emerge --verbose \
     "swig::gentoo"
 
 # Configure environment variables
+export BINUTILS_DIR="/opt/driver"
 export FEATURES="-sandbox -usersandbox"
 export KV_DIR="/usr/src/linux"
 export KV_OUT_DIR="/lib/modules/${KERNEL_VERSION}/build/"
-export BINUTILS_DIR="/opt/driver"
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${BINUTILS_DIR}/lib"
+export PATH="${PATH}:${BINUTILS_DIR}/bin:${BINUTILS_DIR}/sbin"
 
 # Install packages
 emerge --verbose "lustre::portage-stable"
@@ -76,7 +84,7 @@ for lib in $(
         xargs lddtree |
         grep -Po '=> \K(/lib[0-9a-zA-Z_/\.\-]*)'
 ); do
-    lib_dst="$BINUTILS_DIR/lib/$(dirname $lib)"
+    lib_dst="$BINUTILS_DIR/lib/$(basename $lib)"
     if [ ! -f "$lib_dst" ]; then
         cp "/usr/$lib" "$lib_dst"
     fi
